@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from ffn.ffn import FeedForwardNetwork
+from ffn import FeedForwardNetwork
 
 # Parametreler
 d_model = 64
