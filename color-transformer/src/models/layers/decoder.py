@@ -46,20 +46,29 @@ class DecoderLayer(nn.Module):
         Returns:
             Output tensor of shape (batch_size, seq_len, d_model)
         """
+        print(f"\n  🔍 DecoderLayer Debug:")
+        print(f"    Input x shape: {x.shape}, elements: {x.numel()}")
+        
         # 1. Masked multi-head self-attention with residual connection
         attn_output = self.self_attention(x, x, x, mask)
-        
-        # Debug: Check shapes (remove in production)
-        # print(f"  Debug - x shape: {x.shape}, attn_output shape: {attn_output.shape}")
+        print(f"    After attention - attn_output shape: {attn_output.shape}, elements: {attn_output.numel()}")
         
         # Residual connection + dropout + layer norm
         x = x + self.self_attn_dropout(attn_output)
+        print(f"    After residual - x shape: {x.shape}, elements: {x.numel()}")
+        
         x = self.self_attn_norm(x)
+        print(f"    After norm - x shape: {x.shape}, elements: {x.numel()}")
         
         # 2. Feed-forward network with residual connection
         ff_output = self.feed_forward(x)
+        print(f"    After FFN - ff_output shape: {ff_output.shape}, elements: {ff_output.numel()}")
+        
         x = x + self.ff_dropout(ff_output)
+        print(f"    After FFN residual - x shape: {x.shape}, elements: {x.numel()}")
+        
         x = self.ff_norm(x)
+        print(f"    Final output shape: {x.shape}, elements: {x.numel()}")
         
         return x
 
@@ -97,12 +106,18 @@ class Decoder(nn.Module):
         Returns:
             Output tensor of shape (batch_size, seq_len, d_model)
         """
-        for i, layer in enumerate(self.layers):
-            # print(f"    Layer {i+1} input shape: {x.shape}")
-            x = layer(x, mask)
-            # print(f"    Layer {i+1} output shape: {x.shape}")
+        print(f"\n🔍 Decoder Debug:")
+        print(f"  Input to decoder: {x.shape}, elements: {x.numel()}")
+        print(f"  Mask shape: {mask.shape if mask is not None else None}")
         
-        return self.final_norm(x)
+        for i, layer in enumerate(self.layers):
+            print(f"\n  Layer {i+1}:")
+            x = layer(x, mask)
+        
+        x = self.final_norm(x)
+        print(f"\n  Final decoder output: {x.shape}, elements: {x.numel()}")
+        
+        return x
 
 
 # Test Decoder
@@ -112,10 +127,18 @@ if __name__ == "__main__":
     # Parameters
     batch_size = 2
     seq_len = 10
-    d_model = 256  # Smaller for testing
+    d_model = 256
     n_heads = 8
     d_ff = 1024
-    n_layers = 3  # Fewer layers for testing
+    n_layers = 3
+    
+    print(f"\n📊 Configuration:")
+    print(f"  batch_size: {batch_size}")
+    print(f"  seq_len: {seq_len}")
+    print(f"  d_model: {d_model}")
+    print(f"  n_heads: {n_heads}")
+    print(f"  d_ff: {d_ff}")
+    print(f"  n_layers: {n_layers}")
     
     # Create random input
     x = torch.randn(batch_size, seq_len, d_model)
@@ -123,21 +146,30 @@ if __name__ == "__main__":
     # Create causal mask
     mask = torch.tril(torch.ones(seq_len, seq_len)).unsqueeze(0).repeat(batch_size, 1, 1)
     
+    print(f"\n📥 Input shapes:")
+    print(f"  x: {x.shape}")
+    print(f"  mask: {mask.shape}")
+    
     # Test single decoder layer
+    print("\n" + "="*50)
+    print("Testing single DecoderLayer:")
+    print("="*50)
+    
     decoder_layer = DecoderLayer(d_model, n_heads, d_ff)
     layer_output = decoder_layer(x, mask)
-    print(f"\nSingle DecoderLayer:")
-    print(f"  Input shape: {x.shape}")
-    print(f"  Output shape: {layer_output.shape}")
-    print(f"  Output norm: {layer_output.norm().item():.4f}")
+    
+    print(f"\n✅ Single layer output shape: {layer_output.shape}")
     assert layer_output.shape == x.shape, f"Shape mismatch: {layer_output.shape} vs {x.shape}"
     
     # Test full decoder stack
+    print("\n" + "="*50)
+    print(f"Testing full Decoder ({n_layers} layers):")
+    print("="*50)
+    
     decoder = Decoder(n_layers, d_model, n_heads, d_ff)
     decoder_output = decoder(x, mask)
-    print(f"\nFull Decoder ({n_layers} layers):")
-    print(f"  Output shape: {decoder_output.shape}")
-    print(f"  Output norm: {decoder_output.norm().item():.4f}")
+    
+    print(f"\n✅ Full decoder output shape: {decoder_output.shape}")
     assert decoder_output.shape == x.shape, f"Shape mismatch: {decoder_output.shape} vs {x.shape}"
     
     # Parameter count
@@ -147,4 +179,4 @@ if __name__ == "__main__":
     print(f"  Single layer: {layer_params:,}")
     print(f"  Full decoder: {total_params:,}")
     
-    print("\n✅ All shape checks passed!")
+    print("\n✅ All decoder tests passed!")
