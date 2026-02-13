@@ -139,7 +139,7 @@ def create_dataloaders(
 ) -> Tuple[DataLoader, DataLoader, DataLoader, ColorTokenizer]:
     """
     Create train, validation, and test dataloaders.
-    
+
     Args:
         data_path: Path to CSV file
         batch_size: Batch size for training
@@ -149,6 +149,8 @@ def create_dataloaders(
         
     Returns:
         Tuple of (train_loader, val_loader, test_loader, tokenizer)
+
+    Automatically detects device and sets pin_memory accordingly.
     """
     # First create tokenizer using all data
     temp_dataset = ColorSentenceDataset(
@@ -184,13 +186,23 @@ def create_dataloaders(
         train_ratio=train_ratio
     )
     
+    # Detect device and set pin_memory accordingly
+    device = torch.device('cuda' if torch.cuda.is_available() else 
+                         ('mps' if torch.backends.mps.is_available() else 'cpu'))
+    
+    # MPS doesn't support pin_memory yet
+    use_pin_memory = device.type == 'cuda'
+    
+    if device.type == 'mps':
+        print("ℹ️  MPS device detected: disabling pin_memory")
+    
     # Create dataloaders
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
-        pin_memory=True
+        pin_memory=use_pin_memory
     )
     
     val_loader = DataLoader(
@@ -198,7 +210,7 @@ def create_dataloaders(
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=True
+        pin_memory=use_pin_memory
     )
     
     test_loader = DataLoader(
@@ -206,10 +218,12 @@ def create_dataloaders(
         batch_size=batch_size,
         shuffle=False,
         num_workers=num_workers,
-        pin_memory=True
+        pin_memory=use_pin_memory
     )
     
     print(f"\n✅ Dataloaders created:")
+    print(f"   Device: {device.type}")
+    print(f"   Pin memory: {use_pin_memory}")
     print(f"   Train: {len(train_dataset)} samples, {len(train_loader)} batches")
     print(f"   Val: {len(val_dataset)} samples, {len(val_loader)} batches")
     print(f"   Test: {len(test_dataset)} samples, {len(test_loader)} batches")
@@ -242,6 +256,11 @@ if __name__ == "__main__":
     print(f"input_ids shape: {batch['input_ids'].shape}")
     print(f"labels shape: {batch['labels'].shape}")
     print(f"attention_mask shape: {batch['attention_mask'].shape}")
+    
+    # Show device info
+    device = torch.device('cuda' if torch.cuda.is_available() else 
+                         ('mps' if torch.backends.mps.is_available() else 'cpu'))
+    print(f"\n💻 Using device: {device.type}")
     
     # Show sample
     print("\n📝 Sample from batch:")
