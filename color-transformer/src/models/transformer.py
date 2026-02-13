@@ -81,18 +81,19 @@ class ColorTransformer(nn.Module):
         Returns:
             Logits of shape (batch_size, seq_len, vocab_size)
         """
+        batch_size, seq_len = input_ids.shape
+        
         # Create causal mask for autoregressive generation
-        seq_len = input_ids.size(1)
         causal_mask = torch.tril(torch.ones(seq_len, seq_len)).to(input_ids.device)
+        causal_mask = causal_mask[None, None, :, :].repeat(batch_size, 1, 1, 1)
         
         # Combine with padding mask if provided
         if attention_mask is not None:
             # Convert attention mask to shape (batch_size, 1, 1, seq_len)
             padding_mask = attention_mask[:, None, None, :]
-            # Combine causal and padding masks
-            mask = causal_mask[None, None, :, :] * padding_mask
+            mask = causal_mask * padding_mask
         else:
-            mask = causal_mask[None, None, :, :].repeat(input_ids.size(0), 1, 1, 1)
+            mask = causal_mask
         
         # Embed input
         x = self.embedding(input_ids)
