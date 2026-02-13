@@ -13,18 +13,36 @@ class ScaledDotProductAttention(nn.Module):
     def __init__(self, dropout: float = 0.1):
         super().__init__()
         self.dropout = nn.Dropout(p=dropout)
+        self.epsilon = 1e-8  # Küçük bir epsilon ekle
         
     def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, 
                 mask: Optional[torch.Tensor] = None):
         d_k = query.size(-1)
+        
+        # Güvenli bölme için d_k sıfır olmasın
+        d_k = max(d_k, self.epsilon)
+        
         scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)
         
-        if mask is not None:
-            if mask.dim() == 5:
-                mask = mask.squeeze(2)
-            scores = scores.masked_fill(mask == 0, float('-inf'))
+        # Debug: scores'u kontrol et
+        if torch.isnan(scores).any():
+            print("⚠️ NaN in attention scores before mask!")
         
+        if mask is not None:
+            # Mask uygularken -inf kullanma, çok büyük negatif sayı kullan
+            scores = scores.masked_fill(mask == 0, -1e9)
+        
+        # Debug: mask sonrası kontrol
+        if torch.isnan(scores).any():
+            print("⚠️ NaN in attention scores after mask!")
+        
+        # Softmax uygula
         attn_weights = F.softmax(scores, dim=-1)
+        
+        # Debug: attention weights'i kontrol et
+        if torch.isnan(attn_weights).any():
+            print("⚠️ NaN in attention weights!")
+        
         attn_weights = self.dropout(attn_weights)
         context = torch.matmul(attn_weights, value)
         
