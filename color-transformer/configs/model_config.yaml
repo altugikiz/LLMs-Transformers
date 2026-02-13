@@ -1,0 +1,7 @@
+model:
+  d_model: 256
+  n_heads: 8
+  n_layers: 6
+  vocab_size: 1000
+  max_seq_len: 20
+  dropout: 0.1
