@@ -112,6 +112,15 @@ class Trainer:
         total_loss = 0
         total_tokens = 0
         
+        # Model'in tüm parametrelerini kontrol et
+        if self.current_epoch == 0:
+            print("\n🔍 Model parameter stats:")
+            for name, param in self.model.named_parameters():
+                if param.data is not None:
+                    print(f"  {name}: mean={param.data.mean():.4f}, std={param.data.std():.4f}, min={param.data.min():.4f}, max={param.data.max():.4f}")
+                    if torch.isnan(param.data).any():
+                        print(f"    ⚠️ NaN in {name}!")
+        
         pbar = tqdm(self.train_loader, desc=f"Epoch {self.current_epoch + 1} [Train]")
         
         for batch_idx, batch in enumerate(pbar):
@@ -120,96 +129,46 @@ class Trainer:
             labels = batch['labels'].to(self.device)
             attention_mask = batch['attention_mask'].to(self.device)
             
-            # DEBUG: İlk batch'te detaylı kontrol
-            if batch_idx == 0 and self.current_epoch == 0:
-                print(f"\n🔍 DEBUG - First batch:")
-                print(f"  input_ids shape: {input_ids.shape}")
-                print(f"  input_ids min: {input_ids.min().item()}, max: {input_ids.max().item()}")
-                print(f"  labels shape: {labels.shape}")
-                print(f"  labels min: {labels.min().item()}, max: {labels.max().item()}")
-                print(f"  attention_mask shape: {attention_mask.shape}")
-                print(f"  attention_mask sum: {attention_mask.sum().item()}")
-                print(f"  vocab_size: {self.model.vocab_size}")
-                
-                # Check if any token ID is out of vocabulary
-                if input_ids.max() >= self.model.vocab_size:
-                    print(f"  ⚠️ input_ids max ({input_ids.max()}) >= vocab_size ({self.model.vocab_size})")
-                if labels.max() >= self.model.vocab_size and labels.max() != -100:
-                    print(f"  ⚠️ labels max ({labels.max()}) >= vocab_size ({self.model.vocab_size})")
+            # Her batch'te NaN kontrolü
+            if batch_idx == 0:
+                print(f"\n📥 Batch {batch_idx}:")
+                print(f"  input_ids: {input_ids.shape}, min={input_ids.min()}, max={input_ids.max()}")
+                print(f"  labels: {labels.shape}, min={labels.min()}, max={labels.max()}")
+                print(f"  attention_mask: {attention_mask.shape}, sum={attention_mask.sum()}")
             
             # Forward pass
-            logits = self.model(input_ids, attention_mask)
+            try:
+                logits = self.model(input_ids, attention_mask)
+            except Exception as e:
+                print(f"❌ Forward pass error: {e}")
+                raise
             
-            # DEBUG: İlk batch'te logits kontrolü
-            if batch_idx == 0 and self.current_epoch == 0:
-                print(f"\n🔍 DEBUG - Logits:")
+            # Logits kontrolü
+            if torch.isnan(logits).any():
+                print(f"\n❌ NaN detected in logits at batch {batch_idx}!")
                 print(f"  logits shape: {logits.shape}")
-                print(f"  logits min: {logits.min().item():.4f}, max: {logits.max().item():.4f}")
-                print(f"  logits mean: {logits.mean().item():.4f}, std: {logits.std().item():.4f}")
+                print(f"  logits stats: min={logits.min()}, max={logits.max()}, mean={logits.mean()}")
                 
-                # Check for NaN or Inf
-                if torch.isnan(logits).any():
-                    print(f"  ⚠️ logits contains NaN!")
-                if torch.isinf(logits).any():
-                    print(f"  ⚠️ logits contains Inf!")
-            
-            loss = self.criterion(logits, labels)
-            
-            # DEBUG: Loss kontrolü
-            if batch_idx == 0 and self.current_epoch == 0:
-                print(f"\n🔍 DEBUG - Loss:")
-                print(f"  loss: {loss.item():.4f}")
-                if torch.isnan(loss):
-                    print(f"  ⚠️ loss is NaN!")
-            
-            # Backward pass
-            self.optimizer.zero_grad()
-            loss.backward()
-            
-            # DEBUG: Gradient kontrolü
-            if batch_idx == 0 and self.current_epoch == 0:
-                total_norm = 0
-                for p in self.model.parameters():
-                    if p.grad is not None:
-                        param_norm = p.grad.data.norm(2)
-                        total_norm += param_norm.item() ** 2
-                total_norm = total_norm ** 0.5
-                print(f"\n🔍 DEBUG - Gradients:")
-                print(f"  gradient norm: {total_norm:.4f}")
-                if total_norm > 100:
-                    print(f"  ⚠️ gradients exploding!")
-            
-            # Gradient clipping
-            torch.nn.utils.clip_grad_norm_(
-                self.model.parameters(), 
-                self.config.get('grad_clip', 1.0)
-            )
-            
-            self.optimizer.step()
-            
-            # Update metrics
-            total_loss += loss.item() * input_ids.size(0)
-            total_tokens += (labels != -100).sum().item()
-            
-            # Update progress bar
-            pbar.set_postfix({'loss': loss.item()})
-            
-            # Log to wandb
-            if self.use_wandb and self.global_step % 10 == 0:
-                wandb.log({
-                    'train/loss': loss.item(),
-                    'train/lr': self.optimizer.param_groups[0]['lr'],
-                    'global_step': self.global_step
-                })
-            
-            self.global_step += 1
-        
-        avg_loss = total_loss / len(self.train_loader.dataset)
-        
-        return {
-            'loss': avg_loss,
-            'perplexity': torch.exp(torch.tensor(avg_loss)).item()
-        }
+                # Model'in ara katmanlarını kontrol etmek için hook ekle
+                def hook_fn(module, input, output):
+                    if isinstance(output, torch.Tensor) and torch.isnan(output).any():
+                        print(f"  NaN in {module.__class__.__name__}")
+                        print(f"    output shape: {output.shape}")
+                        print(f"    output stats: min={output.min()}, max={output.max()}")
+                
+                # Her katmana hook ekle
+                hooks = []
+                for name, module in self.model.named_modules():
+                    hooks.append(module.register_forward_hook(hook_fn))
+                
+                # Tekrar forward yap
+                logits = self.model(input_ids, attention_mask)
+                
+                # Hook'ları temizle
+                for hook in hooks:
+                    hook.remove()
+                
+                raise ValueError("NaN in logits - training stopped")
     
     def validate(self) -> Dict[str, float]:
         """Run validation."""
