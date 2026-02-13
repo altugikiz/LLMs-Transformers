@@ -81,57 +81,35 @@ class ColorTransformer(nn.Module):
         Returns:
             Logits of shape (batch_size, seq_len, vocab_size)
         """
-        print(f"\n🔍 Transformer Forward Debug:")
-        print(f"  input_ids shape: {input_ids.shape}")
-        print(f"  attention_mask shape: {attention_mask.shape if attention_mask is not None else None}")
-        
         batch_size, seq_len = input_ids.shape
-        print(f"  batch_size: {batch_size}, seq_len: {seq_len}")
         
         # Create causal mask for autoregressive generation
-        print(f"\n  Creating causal mask...")
         causal_mask = torch.tril(torch.ones(seq_len, seq_len)).to(input_ids.device)
-        print(f"    causal_mask shape: {causal_mask.shape}")
         
-        # Add batch and head dimensions: (1, 1, seq_len, seq_len)
-        causal_mask = causal_mask[None, None, :, :]
-        print(f"    causal_mask after unsqueeze: {causal_mask.shape}")
-        
-        # Repeat for batch
-        causal_mask = causal_mask.repeat(batch_size, 1, 1, 1)
-        print(f"    causal_mask after repeat: {causal_mask.shape}, elements: {causal_mask.numel()}")
+        # Add batch dimension: (1, seq_len, seq_len)
+        causal_mask = causal_mask.unsqueeze(0)
         
         # Combine with padding mask if provided
         if attention_mask is not None:
-            print(f"\n  Combining with padding mask...")
-            # Convert attention mask to shape (batch_size, 1, 1, seq_len)
-            padding_mask = attention_mask[:, None, None, :]
-            print(f"    padding_mask shape: {padding_mask.shape}")
+            # Convert attention mask to shape (batch_size, 1, seq_len)
+            padding_mask = attention_mask.unsqueeze(1)
             
             # Expand padding mask to match causal mask dimensions
-            padding_mask = padding_mask.expand(-1, -1, seq_len, -1)
-            print(f"    padding_mask after expand: {padding_mask.shape}")
-            
-            mask = causal_mask * padding_mask
-            print(f"    final mask shape: {mask.shape}, elements: {mask.numel()}")
+            # causal_mask: (1, seq_len, seq_len) -> (batch_size, seq_len, seq_len)
+            # padding_mask: (batch_size, 1, seq_len) -> (batch_size, seq_len, 1)
+            # Result: (batch_size, seq_len, seq_len)
+            mask = causal_mask * padding_mask.unsqueeze(-1)
         else:
-            mask = causal_mask
-            print(f"\n  Using only causal mask: {mask.shape}")
+            mask = causal_mask.repeat(batch_size, 1, 1)
         
         # Embed input
-        print(f"\n  Embedding input...")
         x = self.embedding(input_ids)
-        print(f"    embedded shape: {x.shape}, elements: {x.numel()}")
         
         # Pass through decoder
-        print(f"\n  Passing through decoder...")
         x = self.decoder(x, mask)
-        print(f"    decoder output shape: {x.shape}, elements: {x.numel()}")
         
         # Project to vocabulary
-        print(f"\n  Projecting to vocabulary...")
         logits = self.output_projection(x)
-        print(f"    logits shape: {logits.shape}, elements: {logits.numel()}")
         
         return logits
     
