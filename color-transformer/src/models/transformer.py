@@ -30,6 +30,7 @@ class ColorTransformer(nn.Module):
         self.embedding = EmbeddingLayer(vocab_size, d_model, max_seq_len, dropout)
         self.decoder = Decoder(n_layers, d_model, n_heads, d_ff, dropout)
         self.output_projection = nn.Linear(d_model, vocab_size, bias=False)
+        nn.init.normal_(self.output_projection.weight, mean=0.0, std=0.02)
         
         self._init_weights()
         
