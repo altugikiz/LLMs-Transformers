@@ -8,30 +8,27 @@ import math
 
 
 class TokenEmbedding(nn.Module):
-    """
-    Token embedding layer that converts token indices to dense vectors.
-    """
-    
     def __init__(self, vocab_size: int, d_model: int):
-        """
-        Args:
-            vocab_size: Size of vocabulary
-            d_model: Dimension of embeddings
-        """
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, d_model)
         self.d_model = d_model
         
+        # Embedding'leri küçük değerlerle başlat
+        nn.init.normal_(self.embedding.weight, mean=0.0, std=0.02)
+        
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Args:
-            x: Input tensor of shape (batch_size, seq_len)
-            
-        Returns:
-            Embedded tensor of shape (batch_size, seq_len, d_model)
-            Scaled by sqrt(d_model) as in "Attention is All You Need"
-        """
-        return self.embedding(x) * math.sqrt(self.d_model)
+        # Debug: input token ID'lerini kontrol et
+        if torch.isnan(x).any():
+            print("⚠️ NaN in input tokens!")
+        
+        embedded = self.embedding(x) * math.sqrt(self.d_model)
+        
+        # Debug: embedding çıktısını kontrol et
+        if torch.isnan(embedded).any():
+            print("⚠️ NaN in embeddings!")
+            print(f"  embedding stats: min={embedded.min()}, max={embedded.max()}")
+        
+        return embedded
 
 
 class PositionalEmbedding(nn.Module):
