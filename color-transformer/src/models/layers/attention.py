@@ -2,11 +2,11 @@
 Multi-Head Attention implementation from scratch.
 """
 
-from typing import Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+from typing import Tuple, Optional
 
 
 class ScaledDotProductAttention(nn.Module):
@@ -20,7 +20,7 @@ class ScaledDotProductAttention(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
         
     def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, 
-                mask: torch.Tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
+                mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
             query: (batch_size, n_heads, seq_len_q, d_k)
@@ -83,7 +83,7 @@ class MultiHeadAttention(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
         
     def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
-                mask: torch.Tensor = None) -> torch.Tensor:
+                mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Args:
             query: (batch_size, seq_len_q, d_model)
@@ -97,7 +97,6 @@ class MultiHeadAttention(nn.Module):
         batch_size = query.size(0)
         seq_len_q = query.size(1)
         seq_len_k = key.size(1)
-        seq_len_v = value.size(1)
         
         # 1. Linear projections
         Q = self.w_q(query)  # (batch_size, seq_len_q, d_model)
@@ -107,7 +106,7 @@ class MultiHeadAttention(nn.Module):
         # 2. Split into heads: (batch_size, seq_len, d_model) -> (batch_size, seq_len, n_heads, d_k)
         Q = Q.view(batch_size, seq_len_q, self.n_heads, self.d_k)
         K = K.view(batch_size, seq_len_k, self.n_heads, self.d_k)
-        V = V.view(batch_size, seq_len_v, self.n_heads, self.d_k)
+        V = V.view(batch_size, seq_len_k, self.n_heads, self.d_k)  # seq_len_v = seq_len_k
         
         # 3. Transpose: (batch_size, n_heads, seq_len, d_k)
         Q = Q.transpose(1, 2)
@@ -121,7 +120,8 @@ class MultiHeadAttention(nn.Module):
             
         context, attn_weights = self.attention(Q, K, V, mask)
         
-        # 5. Concatenate heads: (batch_size, n_heads, seq_len_q, d_k) -> (batch_size, seq_len_q, n_heads, d_k)
+        # 5. Transpose back and concatenate heads
+        # context: (batch_size, n_heads, seq_len_q, d_k) -> (batch_size, seq_len_q, n_heads, d_k)
         context = context.transpose(1, 2).contiguous()
         
         # 6. Combine heads: (batch_size, seq_len_q, d_model)
@@ -140,39 +140,59 @@ if __name__ == "__main__":
     # Parameters
     batch_size = 2
     seq_len = 10
-    d_model = 256  # Smaller for testing
+    d_model = 256
     n_heads = 8
+    
+    print(f"\n📊 Configuration:")
+    print(f"  batch_size: {batch_size}")
+    print(f"  seq_len: {seq_len}")
+    print(f"  d_model: {d_model}")
+    print(f"  n_heads: {n_heads}")
+    print(f"  d_k: {d_model // n_heads}")
     
     # Create random inputs
     query = torch.randn(batch_size, seq_len, d_model)
     key = torch.randn(batch_size, seq_len, d_model)
     value = torch.randn(batch_size, seq_len, d_model)
     
+    print(f"\n📥 Input shapes:")
+    print(f"  query: {query.shape}")
+    print(f"  key: {key.shape}")
+    print(f"  value: {value.shape}")
+    
     # Test MultiHeadAttention
     mha = MultiHeadAttention(d_model, n_heads)
     output = mha(query, key, value)
-    print(f"\nMultiHeadAttention:")
-    print(f"  Input shape: {query.shape}")
-    print(f"  Output shape: {output.shape}")
-    print(f"  Output norm: {output.norm().item():.4f}")
+    
+    print(f"\n📤 Output shape:")
+    print(f"  output: {output.shape}")
+    print(f"  Expected: ({batch_size}, {seq_len}, {d_model})")
+    
+    # Verify output shape
+    assert output.shape == (batch_size, seq_len, d_model), f"Shape mismatch: {output.shape} vs {(batch_size, seq_len, d_model)}"
     
     # Test with different sequence lengths
+    print(f"\n🔄 Testing with different sequence lengths...")
     query_short = torch.randn(batch_size, 5, d_model)
     key_long = torch.randn(batch_size, 15, d_model)
     value_long = torch.randn(batch_size, 15, d_model)
     
     output_diff = mha(query_short, key_long, value_long)
-    print(f"\nWith different seq lengths:")
     print(f"  Query shape: {query_short.shape}")
     print(f"  Key/Value shape: {key_long.shape}")
-    print(f"  Output shape: {output_diff.shape}")  # Should match query seq_len
+    print(f"  Output shape: {output_diff.shape}")
+    print(f"  Expected: ({batch_size}, 5, {d_model})")
+    
+    assert output_diff.shape == (batch_size, 5, d_model), f"Shape mismatch for different seq lengths"
     
     # Test with mask
+    print(f"\n🎭 Testing with causal mask...")
     mask = torch.tril(torch.ones(seq_len, seq_len)).unsqueeze(0).repeat(batch_size, 1, 1)
     output_masked = mha(query, key, value, mask)
-    print(f"\nWith causal mask:")
-    print(f"  Output shape: {output_masked.shape}")
+    print(f"  Output shape with mask: {output_masked.shape}")
     
     # Parameter count
     total_params = sum(p.numel() for p in mha.parameters())
     print(f"\n📊 MultiHeadAttention parameters: {total_params:,}")
+    
+    print(f"\n✅ All tests passed!")
