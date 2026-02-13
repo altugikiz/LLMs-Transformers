@@ -7,19 +7,19 @@ data:
 
 # Model architecture
 model:
-  d_model: 256
-  n_heads: 8
-  n_layers: 6
-  d_ff: 1024
-  dropout: 0.1
+  d_model: 64
+  n_heads: 4
+  n_layers: 2
+  d_ff: 128
+  dropout: 0.0
 
 # Training hyperparameters
 training:
-  batch_size: 32
-  num_epochs: 50
-  learning_rate: 0.00001  
-  weight_decay: 0.01
+  batch_size: 16
+  num_epochs: 10
+  learning_rate: 0.00001
+  weight_decay: 0.0
   grad_clip: 1.0
-  label_smoothing: 0.1
+  label_smoothing: 0.0
   num_workers: 4
   early_stopping_patience: 10
