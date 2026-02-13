@@ -2,6 +2,7 @@
 Multi-Head Attention implementation from scratch.
 """
 
+from typing import Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -19,13 +20,13 @@ class ScaledDotProductAttention(nn.Module):
         self.dropout = nn.Dropout(p=dropout)
         
     def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor, 
-                mask: torch.Tensor = None) -> torch.Tensor:
+                mask: torch.Tensor = None) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Args:
             query: (batch_size, n_heads, seq_len_q, d_k)
             key: (batch_size, n_heads, seq_len_k, d_k)
             value: (batch_size, n_heads, seq_len_v, d_k) where seq_len_v = seq_len_k
-            mask: (batch_size, 1, 1, seq_len_k) or (batch_size, 1, seq_len_q, seq_len_k)
+            mask: (batch_size, 1, seq_len_q, seq_len_k) or (batch_size, 1, 1, seq_len_k)
             
         Returns:
             Context vector: (batch_size, n_heads, seq_len_q, d_k)
@@ -94,34 +95,39 @@ class MultiHeadAttention(nn.Module):
             Output: (batch_size, seq_len_q, d_model)
         """
         batch_size = query.size(0)
+        seq_len_q = query.size(1)
+        seq_len_k = key.size(1)
+        seq_len_v = value.size(1)
         
-        # 1. Linear projections and split into heads
+        # 1. Linear projections
         Q = self.w_q(query)  # (batch_size, seq_len_q, d_model)
         K = self.w_k(key)    # (batch_size, seq_len_k, d_model)
         V = self.w_v(value)  # (batch_size, seq_len_v, d_model)
         
-        # Reshape: (batch_size, seq_len, d_model) -> (batch_size, seq_len, n_heads, d_k)
-        # Then transpose: (batch_size, n_heads, seq_len, d_k)
-        Q = Q.view(batch_size, -1, self.n_heads, self.d_k).transpose(1, 2)
-        K = K.view(batch_size, -1, self.n_heads, self.d_k).transpose(1, 2)
-        V = V.view(batch_size, -1, self.n_heads, self.d_k).transpose(1, 2)
+        # 2. Split into heads: (batch_size, seq_len, d_model) -> (batch_size, seq_len, n_heads, d_k)
+        Q = Q.view(batch_size, seq_len_q, self.n_heads, self.d_k)
+        K = K.view(batch_size, seq_len_k, self.n_heads, self.d_k)
+        V = V.view(batch_size, seq_len_v, self.n_heads, self.d_k)
         
-        # 2. Apply attention
-        # If mask is provided, adapt it for multi-head
+        # 3. Transpose: (batch_size, n_heads, seq_len, d_k)
+        Q = Q.transpose(1, 2)
+        K = K.transpose(1, 2)
+        V = V.transpose(1, 2)
+        
+        # 4. Apply attention
         if mask is not None:
             # mask: (batch_size, seq_len_q, seq_len_k) -> (batch_size, 1, seq_len_q, seq_len_k)
             mask = mask.unsqueeze(1)
             
         context, attn_weights = self.attention(Q, K, V, mask)
         
-        # 3. Concatenate heads and project
-        # context: (batch_size, n_heads, seq_len_q, d_k)
-        # -> (batch_size, seq_len_q, n_heads, d_k) -> (batch_size, seq_len_q, d_model)
-        context = context.transpose(1, 2).contiguous().view(
-            batch_size, -1, self.d_model
-        )
+        # 5. Concatenate heads: (batch_size, n_heads, seq_len_q, d_k) -> (batch_size, seq_len_q, n_heads, d_k)
+        context = context.transpose(1, 2).contiguous()
         
-        # Final linear projection
+        # 6. Combine heads: (batch_size, seq_len_q, d_model)
+        context = context.view(batch_size, seq_len_q, self.d_model)
+        
+        # 7. Final linear projection
         output = self.w_o(context)
         
         return output
@@ -133,8 +139,8 @@ if __name__ == "__main__":
     
     # Parameters
     batch_size = 2
-    seq_len = 5
-    d_model = 512
+    seq_len = 10
+    d_model = 256  # Smaller for testing
     n_heads = 8
     
     # Create random inputs
@@ -142,34 +148,31 @@ if __name__ == "__main__":
     key = torch.randn(batch_size, seq_len, d_model)
     value = torch.randn(batch_size, seq_len, d_model)
     
-    # Test ScaledDotProductAttention
-    d_k = d_model // n_heads
-    mha_attention = ScaledDotProductAttention()
-    
-    # Reshape for testing scaled attention
-    Q_test = query.view(batch_size, seq_len, n_heads, d_k).transpose(1, 2)
-    K_test = key.view(batch_size, seq_len, n_heads, d_k).transpose(1, 2)
-    V_test = value.view(batch_size, seq_len, n_heads, d_k).transpose(1, 2)
-    
-    context, weights = mha_attention(Q_test, K_test, V_test)
-    print(f"\nScaledDotProductAttention:")
-    print(f"  Context shape: {context.shape}")
-    print(f"  Attention weights shape: {weights.shape}")
-    
     # Test MultiHeadAttention
     mha = MultiHeadAttention(d_model, n_heads)
     output = mha(query, key, value)
     print(f"\nMultiHeadAttention:")
+    print(f"  Input shape: {query.shape}")
     print(f"  Output shape: {output.shape}")
     print(f"  Output norm: {output.norm().item():.4f}")
     
+    # Test with different sequence lengths
+    query_short = torch.randn(batch_size, 5, d_model)
+    key_long = torch.randn(batch_size, 15, d_model)
+    value_long = torch.randn(batch_size, 15, d_model)
+    
+    output_diff = mha(query_short, key_long, value_long)
+    print(f"\nWith different seq lengths:")
+    print(f"  Query shape: {query_short.shape}")
+    print(f"  Key/Value shape: {key_long.shape}")
+    print(f"  Output shape: {output_diff.shape}")  # Should match query seq_len
+    
     # Test with mask
-    mask = torch.ones(batch_size, seq_len, seq_len)
-    mask = torch.tril(mask)  # Causal mask for decoder
+    mask = torch.tril(torch.ones(seq_len, seq_len)).unsqueeze(0).repeat(batch_size, 1, 1)
     output_masked = mha(query, key, value, mask)
     print(f"\nWith causal mask:")
     print(f"  Output shape: {output_masked.shape}")
     
-    # Check parameter count
+    # Parameter count
     total_params = sum(p.numel() for p in mha.parameters())
     print(f"\n📊 MultiHeadAttention parameters: {total_params:,}")
