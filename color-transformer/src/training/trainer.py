@@ -143,6 +143,9 @@ class Trainer:
                 print(f"❌ Forward pass error: {e}")
                 raise
             
+            # Loss hesapla (BU SATIRI EKLE!)
+            loss = self.criterion(logits, labels)
+            
             # Logits kontrolü
             if torch.isnan(logits).any():
                 print(f"\n❌ NaN detected in logits at batch {batch_idx}!")
@@ -169,6 +172,43 @@ class Trainer:
                     hook.remove()
                 
                 raise ValueError("NaN in logits - training stopped")
+            
+            # Backward pass (BU SATIRLARI EKLE!)
+            self.optimizer.zero_grad()
+            loss.backward()
+            
+            # Gradient clipping (BU SATIRI EKLE!)
+            torch.nn.utils.clip_grad_norm_(
+                self.model.parameters(), 
+                self.config.get('grad_clip', 1.0)
+            )
+            
+            self.optimizer.step()
+            
+            # Update metrics (BU SATIRLARI EKLE!)
+            total_loss += loss.item() * input_ids.size(0)
+            total_tokens += (labels != -100).sum().item()
+            
+            # Update progress bar
+            pbar.set_postfix({'loss': loss.item()})
+            
+            # Log to wandb
+            if self.use_wandb and self.global_step % 10 == 0:
+                wandb.log({
+                    'train/loss': loss.item(),
+                    'train/lr': self.optimizer.param_groups[0]['lr'],
+                    'global_step': self.global_step
+                })
+            
+            self.global_step += 1
+        
+        # Ortalama loss'u hesapla (BU SATIRI EKLE!)
+        avg_loss = total_loss / len(self.train_loader.dataset)
+        
+        return {
+            'loss': avg_loss,
+            'perplexity': torch.exp(torch.tensor(avg_loss)).item()
+        }
     
     def validate(self) -> Dict[str, float]:
         """Run validation."""
@@ -263,10 +303,14 @@ class Trainer:
             
             # Train
             train_metrics = self.train_epoch()
+            if train_metrics is None:  # Bu kontrolü ekle
+                train_metrics = {'loss': 0.0, 'perplexity': 0.0}
             
             # Validate
             val_metrics = self.validate()
             
+            self.optimizer.step()
+
             # Update learning rate
             self.scheduler.step()
             
