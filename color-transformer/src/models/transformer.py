@@ -81,28 +81,57 @@ class ColorTransformer(nn.Module):
         Returns:
             Logits of shape (batch_size, seq_len, vocab_size)
         """
+        print(f"\n🔍 Transformer Forward Debug:")
+        print(f"  input_ids shape: {input_ids.shape}")
+        print(f"  attention_mask shape: {attention_mask.shape if attention_mask is not None else None}")
+        
         batch_size, seq_len = input_ids.shape
+        print(f"  batch_size: {batch_size}, seq_len: {seq_len}")
         
         # Create causal mask for autoregressive generation
+        print(f"\n  Creating causal mask...")
         causal_mask = torch.tril(torch.ones(seq_len, seq_len)).to(input_ids.device)
-        causal_mask = causal_mask[None, None, :, :].repeat(batch_size, 1, 1, 1)
+        print(f"    causal_mask shape: {causal_mask.shape}")
+        
+        # Add batch and head dimensions: (1, 1, seq_len, seq_len)
+        causal_mask = causal_mask[None, None, :, :]
+        print(f"    causal_mask after unsqueeze: {causal_mask.shape}")
+        
+        # Repeat for batch
+        causal_mask = causal_mask.repeat(batch_size, 1, 1, 1)
+        print(f"    causal_mask after repeat: {causal_mask.shape}, elements: {causal_mask.numel()}")
         
         # Combine with padding mask if provided
         if attention_mask is not None:
+            print(f"\n  Combining with padding mask...")
             # Convert attention mask to shape (batch_size, 1, 1, seq_len)
             padding_mask = attention_mask[:, None, None, :]
+            print(f"    padding_mask shape: {padding_mask.shape}")
+            
+            # Expand padding mask to match causal mask dimensions
+            padding_mask = padding_mask.expand(-1, -1, seq_len, -1)
+            print(f"    padding_mask after expand: {padding_mask.shape}")
+            
             mask = causal_mask * padding_mask
+            print(f"    final mask shape: {mask.shape}, elements: {mask.numel()}")
         else:
             mask = causal_mask
+            print(f"\n  Using only causal mask: {mask.shape}")
         
         # Embed input
+        print(f"\n  Embedding input...")
         x = self.embedding(input_ids)
+        print(f"    embedded shape: {x.shape}, elements: {x.numel()}")
         
         # Pass through decoder
+        print(f"\n  Passing through decoder...")
         x = self.decoder(x, mask)
+        print(f"    decoder output shape: {x.shape}, elements: {x.numel()}")
         
         # Project to vocabulary
+        print(f"\n  Projecting to vocabulary...")
         logits = self.output_projection(x)
+        print(f"    logits shape: {logits.shape}, elements: {logits.numel()}")
         
         return logits
     
@@ -134,7 +163,9 @@ class ColorTransformer(nn.Module):
         generated = prompt
         
         with torch.no_grad():
-            for _ in range(max_length - prompt.size(1)):
+            for step in range(max_length - prompt.size(1)):
+                print(f"\n  Generation step {step+1}")
+                
                 # Forward pass
                 logits = self.forward(generated)
                 next_token_logits = logits[:, -1, :] / temperature
@@ -187,6 +218,15 @@ if __name__ == "__main__":
     d_ff = 1024
     max_seq_len = 50
     
+    print(f"\n📊 Configuration:")
+    print(f"  batch_size: {batch_size}")
+    print(f"  seq_len: {seq_len}")
+    print(f"  vocab_size: {vocab_size}")
+    print(f"  d_model: {d_model}")
+    print(f"  n_heads: {n_heads}")
+    print(f"  n_layers: {n_layers}")
+    print(f"  d_ff: {d_ff}")
+    
     # Create model
     model = ColorTransformer(
         vocab_size=vocab_size,
@@ -201,14 +241,26 @@ if __name__ == "__main__":
     input_ids = torch.randint(1, vocab_size, (batch_size, seq_len))
     attention_mask = torch.ones(batch_size, seq_len)
     
+    print(f"\n📥 Input shapes:")
+    print(f"  input_ids: {input_ids.shape}")
+    print(f"  attention_mask: {attention_mask.shape}")
+    
     # Forward pass
+    print("\n" + "="*50)
+    print("Testing forward pass:")
+    print("="*50)
+    
     logits = model(input_ids, attention_mask)
-    print(f"\nForward pass:")
-    print(f"  Input shape: {input_ids.shape}")
+    
+    print(f"\n✅ Forward pass successful!")
     print(f"  Logits shape: {logits.shape}")
     print(f"  Logits range: [{logits.min().item():.2f}, {logits.max().item():.2f}]")
     
     # Test generation
+    print("\n" + "="*50)
+    print("Testing generation:")
+    print("="*50)
+    
     prompt = torch.randint(1, vocab_size, (1, 3))  # Single sample with 3 tokens
     generated = model.generate(
         prompt,
@@ -217,7 +269,7 @@ if __name__ == "__main__":
         top_k=40,
         eos_token_id=3  # Assuming <EOS> is token 3
     )
-    print(f"\nGeneration:")
+    print(f"\n✅ Generation successful!")
     print(f"  Prompt shape: {prompt.shape}")
     print(f"  Generated shape: {generated.shape}")
     print(f"  Generated sequence: {generated[0].tolist()}")
