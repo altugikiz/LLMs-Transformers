@@ -48,6 +48,11 @@ class DecoderLayer(nn.Module):
         """
         # 1. Masked multi-head self-attention with residual connection
         attn_output = self.self_attention(x, x, x, mask)
+        
+        # Debug: Check shapes (remove in production)
+        # print(f"  Debug - x shape: {x.shape}, attn_output shape: {attn_output.shape}")
+        
+        # Residual connection + dropout + layer norm
         x = x + self.self_attn_dropout(attn_output)
         x = self.self_attn_norm(x)
         
@@ -92,8 +97,10 @@ class Decoder(nn.Module):
         Returns:
             Output tensor of shape (batch_size, seq_len, d_model)
         """
-        for layer in self.layers:
+        for i, layer in enumerate(self.layers):
+            # print(f"    Layer {i+1} input shape: {x.shape}")
             x = layer(x, mask)
+            # print(f"    Layer {i+1} output shape: {x.shape}")
         
         return self.final_norm(x)
 
@@ -105,10 +112,10 @@ if __name__ == "__main__":
     # Parameters
     batch_size = 2
     seq_len = 10
-    d_model = 512
+    d_model = 256  # Smaller for testing
     n_heads = 8
-    d_ff = 2048
-    n_layers = 6
+    d_ff = 1024
+    n_layers = 3  # Fewer layers for testing
     
     # Create random input
     x = torch.randn(batch_size, seq_len, d_model)
@@ -123,6 +130,7 @@ if __name__ == "__main__":
     print(f"  Input shape: {x.shape}")
     print(f"  Output shape: {layer_output.shape}")
     print(f"  Output norm: {layer_output.norm().item():.4f}")
+    assert layer_output.shape == x.shape, f"Shape mismatch: {layer_output.shape} vs {x.shape}"
     
     # Test full decoder stack
     decoder = Decoder(n_layers, d_model, n_heads, d_ff)
@@ -130,6 +138,7 @@ if __name__ == "__main__":
     print(f"\nFull Decoder ({n_layers} layers):")
     print(f"  Output shape: {decoder_output.shape}")
     print(f"  Output norm: {decoder_output.norm().item():.4f}")
+    assert decoder_output.shape == x.shape, f"Shape mismatch: {decoder_output.shape} vs {x.shape}"
     
     # Parameter count
     layer_params = sum(p.numel() for p in decoder_layer.parameters())
@@ -137,3 +146,5 @@ if __name__ == "__main__":
     print(f"\n📊 Parameter counts:")
     print(f"  Single layer: {layer_params:,}")
     print(f"  Full decoder: {total_params:,}")
+    
+    print("\n✅ All shape checks passed!")
