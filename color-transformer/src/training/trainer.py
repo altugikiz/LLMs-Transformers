@@ -114,19 +114,70 @@ class Trainer:
         
         pbar = tqdm(self.train_loader, desc=f"Epoch {self.current_epoch + 1} [Train]")
         
-        for batch in pbar:
+        for batch_idx, batch in enumerate(pbar):
             # Move to device
             input_ids = batch['input_ids'].to(self.device)
             labels = batch['labels'].to(self.device)
             attention_mask = batch['attention_mask'].to(self.device)
             
+            # DEBUG: İlk batch'te detaylı kontrol
+            if batch_idx == 0 and self.current_epoch == 0:
+                print(f"\n🔍 DEBUG - First batch:")
+                print(f"  input_ids shape: {input_ids.shape}")
+                print(f"  input_ids min: {input_ids.min().item()}, max: {input_ids.max().item()}")
+                print(f"  labels shape: {labels.shape}")
+                print(f"  labels min: {labels.min().item()}, max: {labels.max().item()}")
+                print(f"  attention_mask shape: {attention_mask.shape}")
+                print(f"  attention_mask sum: {attention_mask.sum().item()}")
+                print(f"  vocab_size: {self.model.vocab_size}")
+                
+                # Check if any token ID is out of vocabulary
+                if input_ids.max() >= self.model.vocab_size:
+                    print(f"  ⚠️ input_ids max ({input_ids.max()}) >= vocab_size ({self.model.vocab_size})")
+                if labels.max() >= self.model.vocab_size and labels.max() != -100:
+                    print(f"  ⚠️ labels max ({labels.max()}) >= vocab_size ({self.model.vocab_size})")
+            
             # Forward pass
             logits = self.model(input_ids, attention_mask)
+            
+            # DEBUG: İlk batch'te logits kontrolü
+            if batch_idx == 0 and self.current_epoch == 0:
+                print(f"\n🔍 DEBUG - Logits:")
+                print(f"  logits shape: {logits.shape}")
+                print(f"  logits min: {logits.min().item():.4f}, max: {logits.max().item():.4f}")
+                print(f"  logits mean: {logits.mean().item():.4f}, std: {logits.std().item():.4f}")
+                
+                # Check for NaN or Inf
+                if torch.isnan(logits).any():
+                    print(f"  ⚠️ logits contains NaN!")
+                if torch.isinf(logits).any():
+                    print(f"  ⚠️ logits contains Inf!")
+            
             loss = self.criterion(logits, labels)
+            
+            # DEBUG: Loss kontrolü
+            if batch_idx == 0 and self.current_epoch == 0:
+                print(f"\n🔍 DEBUG - Loss:")
+                print(f"  loss: {loss.item():.4f}")
+                if torch.isnan(loss):
+                    print(f"  ⚠️ loss is NaN!")
             
             # Backward pass
             self.optimizer.zero_grad()
             loss.backward()
+            
+            # DEBUG: Gradient kontrolü
+            if batch_idx == 0 and self.current_epoch == 0:
+                total_norm = 0
+                for p in self.model.parameters():
+                    if p.grad is not None:
+                        param_norm = p.grad.data.norm(2)
+                        total_norm += param_norm.item() ** 2
+                total_norm = total_norm ** 0.5
+                print(f"\n🔍 DEBUG - Gradients:")
+                print(f"  gradient norm: {total_norm:.4f}")
+                if total_norm > 100:
+                    print(f"  ⚠️ gradients exploding!")
             
             # Gradient clipping
             torch.nn.utils.clip_grad_norm_(
