@@ -26,7 +26,6 @@ class MiniTransformer(nn.Module):
         self.pos_encoder = PositionalEncoding(d_model)
         
         # 2. PyTorch'un hazır Transformer yapısı (Encoder + Decoder)
-        # Slayt 31-35'teki tüm yapıyı kapsar
         self.transformer = nn.Transformer(
             d_model=d_model, nhead=nhead, 
             num_encoder_layers=num_layers, 
@@ -38,7 +37,7 @@ class MiniTransformer(nn.Module):
         self.fc_out = nn.Linear(d_model, trg_vocab_size)
 
     def forward(self, src, trg):
-        # Kaynak ve Hedef maskeleme (Slayt 24 - Masking)
+        # Kaynak ve Hedef maskeleme (Masking)
         src_emb = self.pos_encoder(self.src_embedding(src))
         trg_emb = self.pos_encoder(self.trg_embedding(trg))
         
