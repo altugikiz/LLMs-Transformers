@@ -8,10 +8,10 @@ class MiniTransformerComponents:
     def __init__(self, vocab_size, d_model, max_len=100):
         self.d_model = d_model
         
-        # 1. Embedding Katmanı (Slayt 12)
+        # 1. Embedding Katmanı 
         self.embedding = np.random.randn(vocab_size, d_model) * 0.01
         
-        # 2. Positional Encoding (Slayt 14, 22)
+        # 2. Positional Encoding 
         self.pos_encoding = self._generate_positional_encoding(max_len, d_model)
 
     def _generate_positional_encoding(self, max_len, d_model):
@@ -25,7 +25,7 @@ class MiniTransformerComponents:
         return pe
 
     def get_embeddings(self, token_ids):
-        # Kelime vektörleri + Pozisyon vektörleri (Slayt 22)
+        # Kelime vektörleri + Pozisyon vektörleri 
         seq_len = len(token_ids)
         x = self.embedding[token_ids]
         x += self.pos_encoding[:seq_len, :]
@@ -37,7 +37,7 @@ class MultiHeadAttention:
         self.num_heads = num_heads
         self.d_k = d_model // num_heads
         
-        # Q, K, V için rastgele ağırlıklar (Slayt 17-20)
+        # Q, K, V için rastgele ağırlıklar 
         self.W_q = np.random.randn(d_model, d_model) * 0.1
         self.W_k = np.random.randn(d_model, d_model) * 0.1
         self.W_v = np.random.randn(d_model, d_model) * 0.1
@@ -49,7 +49,7 @@ class MultiHeadAttention:
         K = np.dot(x, self.W_k)
         V = np.dot(x, self.W_v)
 
-        # 2. Scaled Dot-Product Attention (Slayt 18)
+        # 2. Scaled Dot-Product Attention 
         # Scores = (Q * K^T) / sqrt(d_k)
         scores = np.dot(Q, K.T) / np.sqrt(self.d_k)
         attn_weights = softmax(scores)
@@ -57,3 +57,28 @@ class MultiHeadAttention:
         # 3. Sonuç: Weights * V
         output = np.dot(attn_weights, V)
         return output, attn_weights
+    
+
+class TransformerBlock:
+    def __init__(self, d_model, num_heads, d_ff):
+        self.mha = MultiHeadAttention(d_model, num_heads)
+        self.ffn_w1 = np.random.randn(d_model, d_ff) * 0.1
+        self.ffn_w2 = np.random.randn(d_ff, d_model) * 0.1
+
+    def forward(self, x, context=None):
+        """
+        context: Eğer varsa bu bir Decoder katmanıdır ve Encoder çıktısına bakar.
+        Encoder-Decoder Attention (Cross-Attention)
+        """
+        # 1. Self-Attention veya Cross-Attention
+        if context is not None:
+            # Decoder'dan gelen Q, Encoder'dan gelen K ve V ile çarpılır
+            # Basitlik adına burada mantığı özetliyoruz
+            attn_out, weights = self.mha.forward(x) # Gerçekte context kullanılır
+        else:
+            attn_out, weights = self.mha.forward(x)
+            
+        # 2. Feed Forward 
+        ffn_out = np.dot(np.maximum(0, np.dot(attn_out, self.ffn_w1)), self.ffn_w2)
+        
+        return ffn_out + x, weights # Residual Connection 
