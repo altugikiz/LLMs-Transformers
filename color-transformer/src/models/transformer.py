@@ -78,6 +78,7 @@ class ColorTransformer(nn.Module):
         top_k: int = None,
         top_p: float = None,
         eos_token_id: int = None,
+        pad_token_id: int = 0,
         debug: bool = False
     ):
         """
@@ -101,6 +102,9 @@ class ColorTransformer(nn.Module):
                 # Forward pass
                 logits = self.forward(generated)
                 next_token_logits = logits[:, -1, :].clone()  # Clone to avoid modifying original
+
+                # PAD token'ını engelle (çok düşük olasılık ver)
+                next_token_logits[:, pad_token_id] = float('-inf')
                 
                 # DEBUG: İlk adımda logits'i göster
                 if debug and step == 0:
